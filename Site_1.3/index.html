@@ -1,0 +1,256 @@
+< <!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ROBOTTH MONEY</title>
+  <style>
+    :root{
+      --primary:#2563eb;--accent:#10b981;--bg:#f3f4f6;--card:#fff;--muted:#6b7280;
+    }
+    *{box-sizing:border-box;font-family:Inter,Arial,Helvetica,sans-serif}
+    body{margin:0;background:var(--bg);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    .app{width:980px;max-width:100%;display:grid;grid-template-columns:1fr;gap:20px}
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,0.08)}
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .brand{display:flex;gap:12px;align-items:center}
+    .brand h1{font-size:18px;margin:0}
+    .logout{background:#ef4444;color:#fff;padding:8px 12px;border-radius:10px;border:none;cursor:pointer}
+    .center{display:flex;align-items:center;justify-content:center;height:70vh}
+    .login-card{width:360px}
+    label{display:block;font-size:13px;margin-bottom:6px;color:var(--muted)}
+    input[type=text],input[type=password],input[type=number],select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ee;margin-bottom:12px}
+    button.btn{background:var(--primary);color:#fff;border:none;padding:10px 12px;border-radius:8px;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid #e6e9ee;color:var(--muted)}
+    .main-grid{display:grid;grid-template-columns:260px 1fr;gap:16px}
+    .sidebar{padding:12px}
+    .nav button{display:block;width:100%;text-align:left;padding:10px;border-radius:8px;border:none;margin-bottom:8px;cursor:pointer;background:#f8fafc}
+    .nav button.active{background:var(--primary);color:#fff}
+    .balance{font-size:18px;font-weight:700;color:#16a34a;text-align:center;margin:8px 0}
+    .section{padding:12px}
+    .hidden{display:none}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.45);display:flex;align-items:center;justify-content:center}
+    .modal{width:520px;max-width:95%;background:var(--card);padding:18px;border-radius:12px}
+    .flex{display:flex;gap:12px;align-items:center}
+    .spinner{width:64px;height:64px;border-radius:50%;border:8px solid rgba(0,0,0,0.08);border-top-color:var(--primary);animation:spin 1s linear infinite;margin:auto}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .muted{color:var(--muted);font-size:13px}
+    .success{color:#059669;font-weight:600}
+    .danger{color:#dc2626}
+    .note{font-size:13px;color:#374151}
+    .file-row{display:flex;gap:8px;align-items:center}
+    .file-info{font-size:13px;color:#374151;padding:8px;border:1px dashed #e6e9ee;border-radius:8px}
+    @media(max-width:900px){.main-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="app card" id="app">
+    <div class="header">
+      <div class="brand"><h1>ROBOTTH</h1></div>
+      <div>
+        <button id="logoutBtn" class="logout hidden">Terminar sessão</button>
+      </div>
+    </div>
+    <div id="content"></div>
+  </div>
+
+  <script>
+    const IBAN = 'AO06.0040.0000.7789.2420.1016.7';
+    const BANK_NAME = 'Banco BAI';
+    const REQUIRED_DEPOSIT = 36567.00;
+
+    function getStorage(){ return JSON.parse(localStorage.getItem('mini_plataforma_data')||'{}'); }
+    function saveStorage(data){ localStorage.setItem('mini_plataforma_data',JSON.stringify(data)); }
+    function getUserKey(username){return 'user::'+username}
+    function loadUser(username){ const all = getStorage(); return all[getUserKey(username)] || null; }
+    function saveUser(username,obj){ const all = getStorage(); all[getUserKey(username)] = obj; saveStorage(all); }
+
+    let currentUser = localStorage.getItem('mini_plataforma_current') || null;
+
+    function renderLogin(){
+      currentUser = null; localStorage.removeItem('mini_plataforma_current');
+      document.getElementById('logoutBtn').classList.add('hidden');
+      document.getElementById('content').innerHTML = `
+        <div class="center">
+          <div class="card login-card">
+            <h2>Entrar / Criar conta</h2>
+            <label>Nome de utilizador</label>
+            <input id="login_username" type="text" placeholder="ex: maria123" />
+            <label>Palavra-passe</label>
+            <input id="login_password" type="password" placeholder="••••••" />
+            <button class="btn" onclick="actionLogin()">Entrar / Criar</button>
+            <p class="muted">As credenciais são guardadas no teu navegador (localStorage).</p>
+          </div>
+        </div>`;
+    }
+
+    function renderMain(username){
+      const user = loadUser(username);
+      document.getElementById('logoutBtn').classList.remove('hidden');
+      document.getElementById('content').innerHTML = `
+        <div class="main-grid">
+          <div class="card sidebar">
+            <div class="balance" id="ui_balance">Saldo: ${formatKz(user.balance||0)}</div>
+            <div class="nav">
+              <button id="tab_deposito" class="active" onclick="showTab('deposito')">Depósito</button>
+              <button id="tab_saque" onclick="showTab('saque')">Saque</button>
+              <button id="tab_perfil" onclick="showTab('perfil')">Perfil</button>
+              <button id="tab_tarefas" onclick="showTab('tarefas')">Tarefas</button>
+            </div>
+          </div>
+          <div class="card section" id="main_section"></div>
+        </div>`;
+      showTab('deposito');
+    }
+
+    function showTab(tab){
+      document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+      document.getElementById('tab_'+tab).classList.add('active');
+      const username = currentUser; const user = loadUser(username);
+      if(user && user.deposit && user.deposit.status !== 'validated'){ tab = 'deposito'; }
+      const main = document.getElementById('main_section');
+
+      if(tab==='deposito'){
+        main.innerHTML = `
+          <h3>Depósito obrigatório</h3>
+          <p class="note">Valor a depositar: <strong>${formatKz(REQUIRED_DEPOSIT)}</strong></p>
+          <div style="padding:12px;border-radius:8px;background:#fbfbff;border:1px solid #eef2ff">
+            <p><strong>${BANK_NAME}</strong></p>
+            <p class="muted">IBAN:</p>
+            <div style="display:flex;gap:8px;align-items:center">
+              <div style="font-weight:600">${IBAN}</div>
+              <button class="ghost" onclick="copyIBAN()">Copiar IBAN</button>
+            </div>
+          </div>
+          <h4 style="margin-top:12px">Enviar comprovativo (apenas PDF)</h4>
+          <div class="file-row">
+            <input id="file_pdf" type="file" accept="application/pdf" />
+            <div class="file-info" id="file_info">Nenhum ficheiro</div>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <input id="tx_id" type="text" placeholder="ID da transação (opcional)" />
+            <input id="tx_name" type="text" placeholder="Nome do remetente (opcional)" />
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn" onclick="sendProof()">Já fiz o depósito (Enviar comprovativo)</button>
+          </div>
+          <p class="muted" style="margin-top:10px">Após envio, o comprovativo ficará em análise pelo administrador.</p>
+        `;
+        document.getElementById('file_pdf').addEventListener('change',(e)=>{
+          const f = e.target.files[0]; const info = document.getElementById('file_info');
+          if(!f){info.textContent='Nenhum ficheiro';return}
+          if(f.type!=='application/pdf'){alert('Apenas PDF permitido.'); e.target.value=''; info.textContent='Nenhum ficheiro'; return}
+          info.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
+        });
+      } 
+      else if(tab==='saque'){
+        main.innerHTML = `
+          <h3>Saque</h3>
+          <p><strong>Saldo disponível:</strong> ${formatKz(user.balance||0)}</p>
+          <p class="note">O saque será processado e ficará disponível e <strong>para isso consulte o seu supervisor</strong>.<br>
+          Continua a trabalhar nas tarefas para aumentar os teus ganhos enquanto aguardas.</p>
+          <button class="btn" onclick="requestWithdraw()">Solicitar Saque</button>
+        `;
+      } 
+      else if(tab==='perfil'){
+        const u = user;
+        main.innerHTML = `
+          <h3>Perfil</h3>
+          <p><strong>Nome de utilizador:</strong> ${u.username}</p>
+          <p><strong>ID do utilizador:</strong> ${u.id}</p>
+          <p><strong>Depósito validado:</strong> ${u.deposit && u.deposit.status==='validated' ? '<span class="success">Sim</span>' : '<span class="danger">Não</span>'}</p>
+        `;
+      } 
+      else if(tab==='tarefas'){
+        if(user.deposit && user.deposit.status !== 'validated'){
+          alert('Depósito obrigatório. Por favor finalize o depósito antes de aceder às tarefas.'); 
+          showTab('deposito'); return;
+        }
+        main.innerHTML = `
+          <h3>Tarefas</h3>
+          <p class="muted">Clique em procurar para encontrar uma tarefa (procura demora de 30 segundos a 1 minuto).</p>
+          <div style="margin-top:12px">
+            <button class="btn" onclick="startSearchTask()">Procurar tarefas</button>
+          </div>
+          <div id="task_area" style="margin-top:16px"></div>
+        `;
+      }
+      updateBalanceUI();
+    }
+
+    function actionLogin(){
+      const username = document.getElementById('login_username').value.trim();
+      const password = document.getElementById('login_password').value.trim();
+      if(!username || !password){alert('Preenche todos os campos.'); return}
+      let user = loadUser(username);
+      if(!user){ user = {username, password, id: Math.floor(Math.random()*900000)+100000, balance:0, deposit:null, lastTask:null}; saveUser(username,user); }
+      else { if(user.password !== password){alert('Palavra-passe incorreta.'); return} }
+      currentUser = username; localStorage.setItem('mini_plataforma_current',username); renderMain(username);
+    }
+    document.getElementById('logoutBtn').addEventListener('click', ()=>{ currentUser = null; localStorage.removeItem('mini_plataforma_current'); renderLogin(); });
+
+    function copyIBAN(){ navigator.clipboard.writeText(IBAN).then(()=>alert('IBAN copiado.')).catch(()=>alert('Falha ao copiar.')); }
+
+    async function sendProof(){
+      const fileInput = document.getElementById('file_pdf'); const f = fileInput.files[0];
+      if(!f){alert('Escolhe um ficheiro PDF.'); return}
+      if(f.type!=='application/pdf'){alert('Apenas PDF permitido.'); return}
+      const base64 = await fileToBase64(f); const txid = document.getElementById('tx_id').value.trim() || null; const txname = document.getElementById('tx_name').value.trim() || null;
+      const user = loadUser(currentUser);
+      user.deposit = {status:'pending', sentAt:Date.now(), proof:{name:f.name,size:f.size,content:base64}, txid, txname};
+      saveUser(currentUser,user);
+      alert('Comprovativo enviado. Aguarde a validação do administrador.');
+    }
+    function fileToBase64(file){ return new Promise((res,rej)=>{ const r = new FileReader(); r.onload = ()=>res(r.result); r.onerror=()=>rej(); r.readAsDataURL(file); }); }
+
+    function finalizeDepositValidation(username){
+      const user = loadUser(username); if(!user || !user.deposit) return;
+      user.deposit.status = 'validated'; user.deposit.validatedAt = Date.now();
+      user.balance = (user.balance||0) + (REQUIRED_DEPOSIT * 0.10);
+      saveUser(username,user);
+      alert('Depósito validado pelo administrador! A plataforma está desbloqueada.');
+      if(currentUser===username) renderMain(username);
+    }
+
+    function requestWithdraw(){ alert('Pedido recebido. O saque estará disponível para isso consulte o seu supervisor'); }
+
+    function startSearchTask(){
+      const area = document.getElementById('task_area'); area.innerHTML = `<div style="text-align:center"><div class="spinner"></div><p class="muted">🔎 A procurar tarefas disponíveis...</p></div>`;
+      const minMs = 30000; const maxMs = 60000; const delay = Math.floor(Math.random()*(maxMs-minMs+1))+minMs;
+      const user = loadUser(currentUser); user.searching = {startedAt:Date.now(), willFinishAt: Date.now()+delay}; saveUser(currentUser,user);
+      setTimeout(()=>{finishSearchTask()}, delay);
+    }
+    function finishSearchTask(){
+      const user = loadUser(currentUser); const area = document.getElementById('task_area'); const now = Date.now();
+      if(user.lastTask && user.lastTask.nextAvailable && now < user.lastTask.nextAvailable){
+        const mins = Math.ceil((user.lastTask.nextAvailable - now)/60000);
+        area.innerHTML = `<p class="muted">Nenhuma tarefa disponível agora. Próxima disponível em cerca de 5 minutos.</p>`; return;
+      }
+      const reward = Math.floor(Math.random()*(900-1800+1))+900;
+      area.innerHTML = `<div style="padding:12px;border-radius:8px;background:#f8fffa;border:1px solid #ecfdf5"><p>🎉 Tarefa encontrada! Recompensa: <strong>${reward} Kz</strong></p><div style="display:flex;gap:8px"><button class="btn" onclick="completeTask(${reward})">Completar Tarefa</button><button class="ghost" onclick="cancelTask()">Cancelar</button></div></div>`;
+    }
+    function completeTask(value){
+      const user = loadUser(currentUser);
+      user.balance = (user.balance||0) + value;
+      const hMin = 300000; const hMax = 420000; const delay = Math.floor(Math.random()*(hMax-hMin+1))+hMin;
+      user.lastTask = {completedAt:Date.now(), nextAvailable: Date.now()+delay}; saveUser(currentUser,user); updateBalanceUI();
+      document.getElementById('task_area').innerHTML = `<p class="success">Parabéns! Recebeste ${value} Kz. Próxima tarefa disponível em 5 minutos.</p>`;
+    }
+    function cancelTask(){ document.getElementById('task_area').innerHTML = `<p class="muted">Pesquisa cancelada.</p>` }
+    function formatKz(v){ return new Intl.NumberFormat('pt-PT',{style:'currency',currency:'AOA',maximumFractionDigits:2}).format(v).replace('AOA','') + ' Kz'; }
+    function updateBalanceUI(){ const user = loadUser(currentUser); if(!user) return; const b = user.balance||0; const el = document.getElementById('ui_balance'); if(el) el.textContent = 'Saldo: ' + formatKz(b); }
+
+    (function init(){ if(currentUser){ const u = loadUser(currentUser); if(u){ renderMain(currentUser); } else { renderLogin(); } } else { renderLogin(); } })();
+
+    window.actionLogin = actionLogin;
+    window.copyIBAN = copyIBAN;
+    window.sendProof = sendProof;
+    window.showTab = showTab;
+    window.startSearchTask = startSearchTask;
+    window.completeTask = completeTask;
+    window.cancelTask = cancelTask;
+    window.requestWithdraw = requestWithdraw;
+    window.finalizeDepositValidation = finalizeDepositValidation;
+  </script>
+</body>
+</html>
